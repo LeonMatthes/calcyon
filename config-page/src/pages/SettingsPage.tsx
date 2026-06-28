@@ -66,7 +66,7 @@ export const SettingsPage: React.FC = () => {
     savedThemes.savedThemes.find((t) => t.id === settings.SETTING_NIGHT_THEME);
 
   return (
-    <Page title="Halcyon Settings">
+    <Page title="Calcyon Settings">
       <Section title="Theme">
         <ThemePicker
           messageKey="SETTING_THEME"

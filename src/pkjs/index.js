@@ -1,5 +1,5 @@
 var USE_LOCAL_CONFIG = false;
-var configDataUri = 'https://halcyon.freakified.net/';
+var configDataUri = 'https://leonmatthes.github.io/calcyon/';
 var configLocalUri = 'http://localhost:3000/index.html';
 
 var SunCalc = require('./suncalc');

@@ -1,8 +1,8 @@
 {
-  "name": "halcyon-config-page",
+  "name": "calcyon-config-page",
   "version": "1.0.0",
   "type": "module",
-  "description": "Configuration page for Halcyon Pebble watchface",
+  "description": "Configuration page for Calcyon Pebble watchface",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
