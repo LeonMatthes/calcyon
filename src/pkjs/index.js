@@ -1,4 +1,4 @@
-var USE_LOCAL_CONFIG = true;
+var USE_LOCAL_CONFIG = false;
 var configDataUri = 'https://halcyon.freakified.net/';
 var configLocalUri = 'http://localhost:3000/index.html';
 
