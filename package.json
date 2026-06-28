@@ -1,17 +1,19 @@
 {
-  "name": "halcyon-pebble",
-  "author": "Freakified",
-  "version": "2.3",
+  "name": "calcyon",
+  "author": "Leon Matthes",
+  "version": "1.0",
   "keywords": [
-    "pebble-watchface"
+    "pebble-watchface",
+    "calendar",
+    "solar"
   ],
   "private": true,
   "scripts": {
     "check:i18n": "node scripts/check-languages.js"
   },
   "pebble": {
-    "displayName": "Halcyon",
-    "uuid": "c8e97ab8-7c12-45fb-975d-e85d5de61e8b",
+    "displayName": "Calcyon",
+    "uuid": "20ad6a32-797c-4fb7-b81b-88cbb417f635",
     "sdkVersion": "3",
     "enableMultiJS": true,
     "targetPlatforms": [
