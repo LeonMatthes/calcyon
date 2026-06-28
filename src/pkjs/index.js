@@ -401,6 +401,51 @@ function icalItemToEntry(item, color) {
   };
 }
 
+function hexToGColor8(hex) {
+  hex = hex.replace('#', '').toUpperCase();
+  if (hex.length !== 6) return 0xC0;
+
+  var r = parseInt(hex.substr(0, 2), 16);
+  var g = parseInt(hex.substr(2, 2), 16);
+  var b = parseInt(hex.substr(4, 2), 16);
+
+  var r2 = Math.round(r / 255 * 3) & 3;
+  var g2 = Math.round(g / 255 * 3) & 3;
+  var b2 = Math.round(b / 255 * 3) & 3;
+
+  var c = 3;
+  return (c << 6) | (r2 << 4) | (g2 << 2) | b2;
+}
+
+function sendCalendarEvents(events) {
+  var msg = { 'CALENDAR_EVENT_COUNT': events.length };
+
+  if (events.length > 0) {
+    var byteCount = events.length * 6;
+    var byteArray = new Uint8Array(byteCount);
+    var view = new DataView(byteArray.buffer);
+
+    for (var i = 0; i < events.length; i++) {
+      var event = events[i];
+      var offset = i * 6;
+
+      var gcolor8 = typeof event.color === 'number' ? event.color : hexToGColor8(event.color);
+
+      view.setUint16(offset, event.startMinute, true);
+      view.setUint16(offset + 2, event.endMinute, true);
+      byteArray[offset + 4] = gcolor8;
+      byteArray[offset + 5] = 0;
+    }
+
+    msg['CALENDAR_EVENT_DATA'] = Array.from(byteArray);
+  }
+
+  Pebble.sendAppMessage(msg,
+    function () { console.log('Calendar: sent ' + events.length + ' event(s) to watch'); },
+    function (e) { console.log('Calendar: failed to send events: ' + JSON.stringify(e)); }
+  );
+}
+
 function fetchAndLogCalendarEvents() {
   var raw = cachedSettings && cachedSettings.CALENDAR_CONFIG;
   var calendars = [];
@@ -444,6 +489,7 @@ function fetchAndLogCalendarEvents() {
       if (pending === 0) {
         allEvents.sort(function(a, b) { return a.startMinute - b.startMinute; });
         console.log('Calendar: ' + allEvents.length + ' event(s) today: ' + JSON.stringify(allEvents));
+        sendCalendarEvents(allEvents);
       }
     };
     req.send(null);

@@ -86,7 +86,9 @@
       "LOCAL_UTC_OFFSET",
       "REQUEST_UPDATE",
       "WATCH_IS_24H",
-      "SETTING_USE_PRIMARY_WIDGET_FONT"
+      "SETTING_USE_PRIMARY_WIDGET_FONT",
+      "CALENDAR_EVENT_COUNT",
+      "CALENDAR_EVENT_DATA"
     ],
     "resources": {
       "media": [

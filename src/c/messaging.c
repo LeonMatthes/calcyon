@@ -1,6 +1,7 @@
 #include "messaging.h"
 #include "settings.h"
 #include "solarUtils.h"
+#include "calendarUtils.h"
 #include <pebble.h>
 
 void (*message_processed_callback)(void);
@@ -117,6 +118,11 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context) {
       dict_find(iterator, MESSAGE_KEY_ALT_CITY2_UTC_OFFSET);
   Tuple *localUtcOffset_tuple =
       dict_find(iterator, MESSAGE_KEY_LOCAL_UTC_OFFSET);
+
+  Tuple *calendarEventCount_tuple =
+      dict_find(iterator, MESSAGE_KEY_CALENDAR_EVENT_COUNT);
+  Tuple *calendarEventData_tuple =
+      dict_find(iterator, MESSAGE_KEY_CALENDAR_EVENT_DATA);
 
   if (timeColor_tuple != NULL) {
     globalSettings.timeColor = GColorFromHEX(timeColor_tuple->value->int32);
@@ -335,6 +341,36 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context) {
   if (localUtcOffset_tuple != NULL) {
     globalSettings.localUtcOffset =
         (int16_t)localUtcOffset_tuple->value->int32;
+  }
+
+  if (calendarEventCount_tuple != NULL) {
+    int count = (int)calendarEventCount_tuple->value->int32;
+    if (count == 0) {
+      g_calendar_event_count = 0;
+      persist_write_int(CALENDAR_COUNT_PERSIST_KEY, 0);
+      APP_LOG(APP_LOG_LEVEL_INFO, "Calendar: cleared");
+    } else if (count > 0 && count <= MAX_CALENDAR_EVENTS && calendarEventData_tuple != NULL) {
+      int data_len = calendarEventData_tuple->length;
+      int expected_len = count * (int)sizeof(CalendarEvent);
+
+      if (data_len == expected_len) {
+        memcpy(g_calendar_events, calendarEventData_tuple->value->data, data_len);
+        g_calendar_event_count = count;
+
+        persist_write_int(CALENDAR_COUNT_PERSIST_KEY, count);
+        persist_write_data(CALENDAR_PERSIST_KEY, g_calendar_events, data_len);
+
+        APP_LOG(APP_LOG_LEVEL_INFO, "Calendar: received %d events", count);
+        for (int i = 0; i < count; i++) {
+          APP_LOG(APP_LOG_LEVEL_INFO, "  Event %d: start=%d end=%d color=0x%02X",
+                  i, g_calendar_events[i].start_min, g_calendar_events[i].end_min,
+                  g_calendar_events[i].color);
+        }
+      } else {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "Calendar: data length mismatch (got %d, expected %d)",
+                data_len, expected_len);
+      }
+    }
   }
 
   Settings_saveToStorage();

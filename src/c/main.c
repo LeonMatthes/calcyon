@@ -6,6 +6,7 @@
 #include "messaging.h"
 #include "settings.h"
 #include "solarUtils.h"
+#include "calendarUtils.h"
 #include "text_metrics.h"
 #include "utils.h"
 #include "widgets.h"
@@ -382,6 +383,9 @@ static void init() {
 
   // init the messaging thing
   messaging_init(onSettingsChanged, on_request_failed);
+
+  // load calendar events from storage
+  calendar_load_from_storage();
 
   // Create main Window element and assign to pointer
   mainWindow = window_create();
