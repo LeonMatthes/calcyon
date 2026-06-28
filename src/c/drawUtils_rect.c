@@ -229,8 +229,6 @@ void draw_ring_layer(Layer *layer, GContext *ctx) {
                  twilightEndRect.size.w + 4, twilightEndRect.size.h + 4));
 
   // Draw calendar event arcs over the ring
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Calender event count: %d", g_calendar_event_count);
-
   GRect centerBounds =
       GRect(bounds.origin.x + thickness, bounds.origin.y + thickness,
             bounds.size.w - thickness * 2, bounds.size.h - thickness * 2);
@@ -247,7 +245,6 @@ void draw_ring_layer(Layer *layer, GContext *ctx) {
     int shiftedEndMin   = (ev->end_min   + 15 * 60) % (24 * 60);
     int startPip = (int)((shiftedStartMin / 1440.0f) * numPositions + 0.5f);
     int endPip   = (int)((shiftedEndMin   / 1440.0f) * numPositions + 0.5f);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Drawing event %d, start: %d, end: %d", e, startPip, endPip);
     GColor evColor = (GColor){.argb = ev->color};
 
     // Event arc in event color
