@@ -49,6 +49,29 @@ See the design exploration artifact for visual mockups.
 | **C — Split Ring** | Outer half of ring stays solar; inner half shows calendar colour |
 | **D — Orbit Beads** | Small coloured dots mark event start times on the sun's path |
 
+## Event detail (drill-down) design (2026-06-28)
+
+When the wearer touches an event arc on the ring, the face drills down to show that
+event's details. Four directions were explored (see the event-detail artifact); the
+chosen approach is **Detail in Panel**:
+
+- The centre panel that normally shows the clock swaps to the event's **title, time,
+  and location**, drawn in the existing flat face style (square white panel, hairline
+  border, chunky bold font). No new visual language — it repaints content the face
+  already draws.
+- The tapped event is marked on the ring with the **Spotlight** highlight: the solar
+  band and all other events **dim to muted tones while only the selected arc keeps full
+  colour**. This gives the strongest figure/ground separation at emery's low resolution
+  and is cheap to draw (an opacity change on everything-but-the-selected). Solar context
+  is suppressed only *while* drilled in, which is acceptable since the wearer is focused
+  on a single event.
+
+Alternatives considered but not chosen: a dark outline (too subtle at 200 px), an inner
+bulge / pointer tab (more prominent but adds geometry to a busy edge), and a colour-tied
+panel (panel border adopts the calendar colour — a good optional accent to layer on top
+later). The other drill-down directions (Anchored Callout, Countdown, Agenda Peek) remain
+viable as secondary gestures but are out of scope for now.
+
 ## Implementation plan
 
 **Phase 1 — Implement Design A (Painted Ring).** The rendering code is a near-direct
