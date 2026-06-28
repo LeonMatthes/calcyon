@@ -4,6 +4,7 @@
 #include "settings.h"
 #include "solarUtils.h"
 #include "utils.h"
+#include "calendarUtils.h"
 
 static ColorTheme currentTheme;
 
@@ -112,6 +113,26 @@ void draw_center_layer(Layer *layer, GContext *ctx) {
   }
 }
 
+void snap_to_bounds(GRect *rect, GRect bounds, int thickness) {
+  // snap origin
+  if (rect->origin.x - thickness <= bounds.origin.x) {
+    rect->size.w += (rect->origin.x - bounds.origin.x);
+    rect->origin.x = bounds.origin.x;
+  }
+  if (rect->origin.y - thickness <= bounds.origin.y) {
+    rect->size.h += (rect->origin.y - bounds.origin.y);
+    rect->origin.y = bounds.origin.y;
+  }
+
+  // snap size
+  if (rect->origin.x + rect->size.w + thickness >= bounds.origin.x + bounds.size.w) {
+    rect->size.w += (bounds.origin.x + bounds.size.w) - (rect->origin.x + rect->size.w);
+  }
+  if (rect->origin.y + rect->size.h + thickness >= bounds.origin.y + bounds.size.h) {
+    rect->size.h += (bounds.origin.y + bounds.size.h) - (rect->origin.y + rect->size.h);
+  }
+}
+
 void draw_ring_layer(Layer *layer, GContext *ctx) {
   currentTheme = getCurrentColorTheme();
   GRect bounds = layer_get_bounds(layer);
@@ -206,6 +227,46 @@ void draw_ring_layer(Layer *layer, GContext *ctx) {
   graphics_draw_rect(
       ctx, GRect(twilightEndRect.origin.x - 2, twilightEndRect.origin.y - 2,
                  twilightEndRect.size.w + 4, twilightEndRect.size.h + 4));
+
+  // Draw calendar event arcs over the ring
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Calender event count: %d", g_calendar_event_count);
+
+  GRect centerBounds =
+      GRect(bounds.origin.x + thickness, bounds.origin.y + thickness,
+            bounds.size.w - thickness * 2, bounds.size.h - thickness * 2);
+
+  int eventMargin = 3;
+  int eventThickness = thickness - 2 * eventMargin;
+  GRect eventBounds = 
+      GRect(bounds.origin.x + eventMargin, bounds.origin.y + eventMargin,
+            bounds.size.w - eventMargin * 2, bounds.size.h - eventMargin * 2);
+
+  for (int e = 0; e < g_calendar_event_count; e++) {
+    CalendarEvent *ev = &g_calendar_events[e];
+    int shiftedStartMin = (ev->start_min + 15 * 60) % (24 * 60);
+    int shiftedEndMin   = (ev->end_min   + 15 * 60) % (24 * 60);
+    int startPip = (int)((shiftedStartMin / 1440.0f) * numPositions + 0.5f);
+    int endPip   = (int)((shiftedEndMin   / 1440.0f) * numPositions + 0.5f);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Drawing event %d, start: %d, end: %d", e, startPip, endPip);
+    GColor evColor = (GColor){.argb = ev->color};
+
+    // Event arc in event color
+    graphics_context_set_fill_color(ctx, evColor);
+    graphics_context_set_stroke_color(ctx, evColor);
+    for (int i = startPip; i != endPip; i = (i + 1) % numPositions) {
+      GPoint pipPos = getPipPosition(i, numPositions, centerBounds);
+      GPoint nextPipPos = getPipPosition((i + 1) % numPositions, numPositions, centerBounds);
+
+      bool horizontal = pipPos.x != nextPipPos.x;
+      int width = horizontal ? abs(pipPos.x - nextPipPos.x) : eventThickness;
+      int height = horizontal ? eventThickness : abs(pipPos.y - nextPipPos.y);
+      int x = horizontal ? int_min(pipPos.x, nextPipPos.x) : (pipPos.x < bounds.size.w / 2 ? eventMargin : pipPos.x + eventMargin);
+      int y = horizontal ? (pipPos.y < bounds.size.h / 2 ? eventMargin : pipPos.y + eventMargin) : int_min(pipPos.y, nextPipPos.y);
+      GRect pipRect = GRect(x, y, width, height);
+      snap_to_bounds(&pipRect, eventBounds, thickness);
+      graphics_fill_rect(ctx, pipRect, 1, GCornerNone);
+    }
+  }
 
   // cue the sun!
   graphics_context_set_fill_color(ctx, currentTheme.sunFillColor);

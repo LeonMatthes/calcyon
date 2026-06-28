@@ -390,7 +390,11 @@ Pebble.addEventListener('ready', function (e) {
 var IcalExpander = require('./lib/ical-expander.js');
 
 function toMinutes(jsDate) {
-  return jsDate.getHours() * 60 + jsDate.getMinutes();
+  // getHours() can return UTC hours in some embedded JS runtimes (e.g. PebbleKit JS).
+  // Explicitly reconstruct local time from UTC + the timezone offset instead.
+  // getTimezoneOffset() returns (UTC - local) in minutes, so for UTC+1 it returns -60.
+  var utcMinutes = jsDate.getUTCHours() * 60 + jsDate.getUTCMinutes();
+  return ((utcMinutes - jsDate.getTimezoneOffset()) % 1440 + 1440) % 1440;
 }
 
 function icalItemToEntry(item, color) {

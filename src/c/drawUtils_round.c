@@ -4,6 +4,7 @@
 #include "settings.h"
 #include "solarUtils.h"
 #include "utils.h"
+#include "calendarUtils.h"
 
 static ColorTheme currentTheme;
 
@@ -162,6 +163,37 @@ void draw_ring_layer(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, currentTheme.ringSunsetColor);
   graphics_fill_radial(ctx, draw_bounds, GOvalScaleModeFitCircle,
                        expanded_thickness, sunsetStartAngle, sunsetEndAngle);
+
+  // Draw calendar event arcs over the ring
+  for (int e = 0; e < g_calendar_event_count; e++) {
+    CalendarEvent *ev = &g_calendar_events[e];
+    int shiftedStartMin = (ev->start_min + hourShift * 60) % (24 * 60);
+    int shiftedEndMin   = (ev->end_min   + hourShift * 60) % (24 * 60);
+    int startAngle = (int)((shiftedStartMin / 1440.0f) * TRIG_MAX_ANGLE);
+    int endAngle   = (int)((shiftedEndMin   / 1440.0f) * TRIG_MAX_ANGLE);
+    // Stroke border behind the event arc (matches sunrise/sunset style)
+    graphics_context_set_fill_color(ctx, currentTheme.ringStrokeColor);
+    if (startAngle <= endAngle) {
+      graphics_fill_radial(ctx, draw_bounds, GOvalScaleModeFitCircle,
+                           expanded_thickness, startAngle - arcStroke, endAngle + arcStroke);
+    } else {
+      graphics_fill_radial(ctx, draw_bounds, GOvalScaleModeFitCircle,
+                           expanded_thickness, startAngle - arcStroke, TRIG_MAX_ANGLE);
+      graphics_fill_radial(ctx, draw_bounds, GOvalScaleModeFitCircle,
+                           expanded_thickness, 0, endAngle + arcStroke);
+    }
+    // Event color arc on top
+    graphics_context_set_fill_color(ctx, (GColor){.argb = ev->color});
+    if (startAngle <= endAngle) {
+      graphics_fill_radial(ctx, draw_bounds, GOvalScaleModeFitCircle,
+                           expanded_thickness, startAngle, endAngle);
+    } else {
+      graphics_fill_radial(ctx, draw_bounds, GOvalScaleModeFitCircle,
+                           expanded_thickness, startAngle, TRIG_MAX_ANGLE);
+      graphics_fill_radial(ctx, draw_bounds, GOvalScaleModeFitCircle,
+                           expanded_thickness, 0, endAngle);
+    }
+  }
 
   // Draw the sun position
   graphics_context_set_stroke_width(ctx, strokeWidth);

@@ -25,3 +25,7 @@
 
 void draw_center_layer(Layer *layer, GContext *ctx);
 void draw_ring_layer(Layer *layer, GContext *ctx);
+
+// Some helper functions
+static inline int int_min(int a, int b) { return a < b ? a : b; }
+static inline int int_max(int a, int b) { return a > b ? a : b; }
