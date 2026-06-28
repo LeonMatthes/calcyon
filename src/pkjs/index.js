@@ -1,6 +1,6 @@
-var USE_LOCAL_CONFIG = false;
+var USE_LOCAL_CONFIG = true;
 var configDataUri = 'https://halcyon.freakified.net/';
-var configLocalUri = 'http://10.25.219.23:3000/index.html';
+var configLocalUri = 'http://localhost:3000/index.html';
 
 var SunCalc = require('./suncalc');
 var Weather = require('./weather');
@@ -385,6 +385,71 @@ Pebble.addEventListener('ready', function (e) {
   getLocation();
 });
 
+// ---- Calendar event fetching ----
+
+var IcalExpander = require('./lib/ical-expander.js');
+
+function toMinutes(jsDate) {
+  return jsDate.getHours() * 60 + jsDate.getMinutes();
+}
+
+function icalItemToEntry(item, color) {
+  return {
+    startMinute: toMinutes(item.startDate.toJSDate()),
+    endMinute:   toMinutes(item.endDate.toJSDate()),
+    color:       color
+  };
+}
+
+function fetchAndLogCalendarEvents() {
+  var raw = cachedSettings && cachedSettings.CALENDAR_CONFIG;
+  var calendars = [];
+  try { calendars = raw ? JSON.parse(raw) : []; } catch (e) { calendars = []; }
+  if (calendars.length === 0) {
+    console.log('Calendar: no calendars configured.');
+    return;
+  }
+
+  var now = new Date();
+  var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+  var pending = calendars.length;
+  var allEvents = [];
+
+  calendars.forEach(function(cal) {
+    var req = new XMLHttpRequest();
+    req.open('GET', cal.url, true);
+    req.onreadystatechange = function() {
+      if (req.readyState !== 4) return;
+
+      if (req.status !== 200) {
+        console.log('Calendar: HTTP ' + req.status + ' for URL: ' + cal.url);
+      } else {
+        try {
+          var expander = new IcalExpander({ ics: req.responseText, maxIterations: 1000 });
+          var result = expander.between(todayStart, todayEnd);
+
+          var entries = result.events.concat(result.occurrences).map(function(item) {
+            return icalItemToEntry(item, cal.color);
+          });
+
+          allEvents.push.apply(allEvents, entries);
+        } catch (err) {
+          console.log('Calendar: parse error: ' + err);
+        }
+      }
+
+      pending -= 1;
+      if (pending === 0) {
+        allEvents.sort(function(a, b) { return a.startMinute - b.startMinute; });
+        console.log('Calendar: ' + allEvents.length + ' event(s) today: ' + JSON.stringify(allEvents));
+      }
+    };
+    req.send(null);
+  });
+}
+
 // ---- Watch-initiated heartbeat ----
 // The watch sends REQUEST_UPDATE every ~30 minutes to request fresh data.
 // It also includes its 24h time format preference.
@@ -402,6 +467,7 @@ Pebble.addEventListener('appmessage', function (e) {
     // Fresh heartbeat from the watch — start a new backoff cycle.
     resetBackoff();
     getLocation();
+    fetchAndLogCalendarEvents();
   }
 });
 
@@ -498,11 +564,16 @@ Pebble.addEventListener('webviewclosed', function (e) {
     }
   }
 
+  // Keys that live in the config JSON but must never be forwarded to the watch —
+  // either because the C side has no message key for them (alt-city names are
+  // resolved to UTC offsets here in JS) or because they are phone-only config
+  // (CALENDAR_CONFIG is fetched and used by JS; the watch only sees event arcs).
+  var phoneOnlyKeys = ['SETTING_ALT_CITY', 'SETTING_ALT_LABEL', 'SETTING_ALT_CITY2', 'SETTING_ALT_LABEL2', 'CALENDAR_CONFIG'];
+
   // Process non-color, non-widget settings
   Object.keys(configData).forEach(function (key) {
     if (colorKeys.indexOf(key) === -1 && widgetKeys.indexOf(key) === -1 &&
-      key !== 'SETTING_ALT_CITY' && key !== 'SETTING_ALT_LABEL' &&
-      key !== 'SETTING_ALT_CITY2' && key !== 'SETTING_ALT_LABEL2') {
+      phoneOnlyKeys.indexOf(key) === -1) {
       var value = configData[key];
       if (typeof value === 'boolean') {
         dict[key] = value ? 1 : 0;

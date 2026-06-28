@@ -31,6 +31,11 @@ export interface Capabilities {
   HRM: boolean;
 }
 
+export interface CalendarEntry {
+  url: string;
+  color: string; // 6-char hex without '#', e.g. "0055FF"
+}
+
 export interface Settings {
   SETTING_THEME: string;
   SETTING_NIGHT_THEME: string;
@@ -75,4 +80,5 @@ export interface Settings {
   SETTING_ALT_LABEL: string;
   SETTING_ALT_CITY2: string;
   SETTING_ALT_LABEL2: string;
+  CALENDAR_CONFIG: string; // JSON-encoded CalendarEntry[]
 }

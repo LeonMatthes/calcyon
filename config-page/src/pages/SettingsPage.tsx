@@ -11,6 +11,7 @@ import {
   WidgetSelector,
   DonationLink,
   AltTimezoneSection,
+  CalendarList,
 } from '../components';
 import { useSavedThemes } from '../hooks/useSavedThemes';
 import lightThemes from '../data/light-themes.json';
@@ -321,6 +322,10 @@ export const SettingsPage: React.FC = () => {
           ]}
         />
       </Section>
+      <Section title="Calendars (ICS)">
+        <CalendarList />
+      </Section>
+
       <DonationLink />
     </Page>
   );

@@ -45,4 +45,5 @@ export const getDefaultSettings = (capabilities: Capabilities): Settings => ({
   SETTING_ALT_LABEL: 'SFO',
   SETTING_ALT_CITY2: 'UTC',
   SETTING_ALT_LABEL2: 'UTC',
+  CALENDAR_CONFIG: '[]',
 });

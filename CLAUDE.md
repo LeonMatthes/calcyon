@@ -29,6 +29,14 @@ npm run dev       # local dev server
 npm run build     # production build
 ```
 
+To test the config page against the emulator:
+1. Set `USE_LOCAL_CONFIG = true` in `src/pkjs/index.js` (points to `http://localhost:3000/index.html`)
+2. Run the config page dev server: `cd config-page && npm run dev`
+3. Build and install on the emulator: `./pebble.sh build && ./pebble.sh install --emulator emery`
+4. Open the config UI from the emulator: `./pebble.sh emu-app-config --emulator emery`
+
+Remember to set `USE_LOCAL_CONFIG = false` before committing.
+
 ## Architecture
 
 The app has two distinct runtime environments that communicate via `AppMessage`:

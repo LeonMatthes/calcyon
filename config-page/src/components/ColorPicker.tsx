@@ -5,9 +5,69 @@ import { Settings } from '../context/types';
 import { PEBBLE_COLORS, getColorName } from '../data/colors';
 import { FormItem } from './FormItem';
 
+interface ColorPickerModalProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  value: string;
+  onChange: (hex: string) => void;
+  colorGrid: (string | null)[];
+}
+
+export const ColorPickerModal: React.FC<ColorPickerModalProps> = ({
+  isOpen,
+  onOpenChange,
+  title,
+  value,
+  onChange,
+  colorGrid,
+}) => (
+  <ModalOverlay
+    isOpen={isOpen}
+    onOpenChange={onOpenChange}
+    className="halite-color-modal-overlay"
+    isDismissable
+  >
+    <Modal className="halite-color-modal">
+      <Dialog className="halite-color-dialog">
+        {({ close }) => (
+          <>
+            <div className="halite-color-modal-header">
+              <Heading slot="title">{title}</Heading>
+              <Button className="halite-color-modal-close" onPress={close}>
+                ×
+              </Button>
+            </div>
+            <div className="halite-color-modal-grid">
+              {colorGrid.map((color, index) => {
+                if (color === null) {
+                  return <div key={`blank-${index}`} className="halite-color-swatch-blank" />;
+                }
+                const colorHex = color.replace('#', '');
+                return (
+                  <Button
+                    key={colorHex}
+                    className={`halite-color-swatch ${value === colorHex ? 'active' : ''}`}
+                    style={{ backgroundColor: color }}
+                    aria-label={getColorName(colorHex)}
+                    onPress={() => {
+                      onChange(colorHex);
+                      close();
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )}
+      </Dialog>
+    </Modal>
+  </ModalOverlay>
+);
+
 export type ColorMode = 'color' | 'bw' | 'bw-grey';
 
-const ORDERED_COLOR_GRID: (string | null)[] = [
+export const ORDERED_COLOR_GRID: (string | null)[] = [
   '#000000',
   '#555555',
   '#AAAAAA',
@@ -176,47 +236,14 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         </div>
       </Button>
 
-      <ModalOverlay
+      <ColorPickerModal
         isOpen={isOpen}
         onOpenChange={setIsOpen}
-        className="halite-color-modal-overlay"
-        isDismissable
-      >
-        <Modal className="halite-color-modal">
-          <Dialog className="halite-color-dialog">
-            {({ close }) => (
-              <>
-                <div className="halite-color-modal-header">
-                  <Heading slot="title">{label}</Heading>
-                  <Button className="halite-color-modal-close" onPress={close}>
-                    ×
-                  </Button>
-                </div>
-                <div className="halite-color-modal-grid">
-                  {colorGrid.map((color, index) => {
-                    if (color === null) {
-                      return <div key={`blank-${index}`} className="halite-color-swatch-blank" />;
-                    }
-                    const colorHex = color.replace('#', '');
-                    return (
-                      <Button
-                        key={colorHex}
-                        className={`halite-color-swatch ${value === colorHex ? 'active' : ''}`}
-                        style={{ backgroundColor: color }}
-                        aria-label={getColorName(colorHex)}
-                        onPress={() => {
-                          updateSetting(messageKey, colorHex);
-                          close();
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
+        title={label}
+        value={value}
+        onChange={(colorHex) => updateSetting(messageKey, colorHex)}
+        colorGrid={colorGrid}
+      />
     </FormItem>
   );
 };
