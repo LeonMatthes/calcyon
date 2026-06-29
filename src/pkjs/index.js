@@ -343,6 +343,16 @@ function locationSuccess(pos) {
     return;
   }
 
+  // Skip the network fetch if the cached weather is still fresh. The watch
+  // fires REQUEST_UPDATE on every launch (incl. quick menu in/out), so without
+  // this guard every re-open would hit the weather API. cachedWeather was
+  // already pushed to the watch via sendDataToWatch() above.
+  if (Weather.isFresh(cachedWeather)) {
+    console.log('Weather cache is still fresh; skipping fetch');
+    resetBackoff();
+    return;
+  }
+
   Weather.fetch(lat, lng,
     function (data) {
       cachedWeather = data;

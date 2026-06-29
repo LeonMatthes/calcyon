@@ -10,7 +10,10 @@ function getCondition(code, lang) {
 
 var OPENMETEO_BASE = 'https://api.open-meteo.com/v1/forecast';
 var FETCH_TIMEOUT_MS = 15000;
-var WEATHER_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+// Slightly shorter than the watch's 30-min heartbeat interval, so a normally
+// scheduled heartbeat always refreshes weather, but a quick menu open/close in
+// between does not race the timer and trigger a redundant fetch.
+var WEATHER_CACHE_MAX_AGE_MS = 25 * 60 * 1000;
 var WEATHER_CACHE_DISPLAY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 function isFreshWeather(weather) {
