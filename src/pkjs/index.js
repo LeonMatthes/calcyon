@@ -11,6 +11,15 @@ var Cities = require('./cities');
 var cachedWeather = null;
 var cachedSolar = null;
 var cachedSettings = null;
+var cachedCalendarEvents = null;
+var cachedCalendarFetchedAt = 0;
+
+var CALENDAR_EVENTS_STORAGE_KEY = 'halcyonCalendarEvents';
+// How long a calendar fetch stays "fresh". The watch fires REQUEST_UPDATE on
+// every launch (incl. quick menu in/out), so without this guard every re-open
+// would hit the network. Make sure to make this slightly shorter than the heartbeat interval.
+// That means a normally scheduled heartbeat will cause a refresh, but not e.g. a quick menu open/close.
+var CALENDAR_REFRESH_INTERVAL_MS = 25 * 60 * 1000;
 
 var TIME_FORMAT_STORAGE_KEY = 'halcyonIs24h';
 var DEFAULT_ALT_CITY = 'TOKYO';
@@ -377,12 +386,19 @@ Pebble.addEventListener('ready', function (e) {
     try { cachedSettings = JSON.parse(savedSettings); } catch (e) { }
   }
 
+  // Restore calendar events cached from a previous session (today only). The
+  // watch persists its own copy across restarts, so we don't resend here — we
+  // only need the cache to decide whether a refetch is due.
+  restoreCalendarEvents();
+
   // If we have cached data, send it immediately so the watch has something
   // (uses defaults if no settings configured yet)
   sendDataToWatch();
 
-  // Then kick off a fresh location + weather fetch
+  // Then kick off a fresh location + weather fetch, and refresh calendar events
+  // only if the cache has gone stale. A quick menu in/out won't refetch.
   getLocation();
+  maybeFetchCalendarEvents();
 });
 
 // ---- Calendar event fetching ----
@@ -421,6 +437,53 @@ function hexToGColor8(hex) {
   return (c << 6) | (r2 << 4) | (g2 << 2) | b2;
 }
 
+// Cached calendar events are tagged with the day they were fetched for, since
+// the encoded start/end values are minute-offsets within "today". A cache from
+// a previous day is discarded rather than shown against the wrong day.
+function todayKey() {
+  var now = new Date();
+  return now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
+}
+
+function saveCalendarEvents(events) {
+  cachedCalendarEvents = events;
+  cachedCalendarFetchedAt = Date.now();
+  try {
+    localStorage.setItem(CALENDAR_EVENTS_STORAGE_KEY, JSON.stringify({
+      date: todayKey(),
+      fetchedAt: cachedCalendarFetchedAt,
+      events: events
+    }));
+  } catch (e) { }
+}
+
+function restoreCalendarEvents() {
+  try {
+    var saved = localStorage.getItem(CALENDAR_EVENTS_STORAGE_KEY);
+    if (!saved) return;
+    var parsed = JSON.parse(saved);
+    if (parsed && parsed.date === todayKey() && Array.isArray(parsed.events)) {
+      cachedCalendarEvents = parsed.events;
+      cachedCalendarFetchedAt = parsed.fetchedAt || 0;
+    }
+  } catch (e) { }
+}
+
+// Refetch only when the cache is stale: no cache for today, or the last fetch
+// was more than CALENDAR_REFRESH_INTERVAL_MS ago. A new day invalidates the
+// cache via the todayKey() check in restoreCalendarEvents() (cachedCalendarEvents
+// stays null), so a day rollover always refetches regardless of elapsed time.
+// Config changes bypass this and call fetchAndLogCalendarEvents() directly.
+function maybeFetchCalendarEvents() {
+  if (cachedCalendarEvents !== null &&
+      (Date.now() - cachedCalendarFetchedAt) < CALENDAR_REFRESH_INTERVAL_MS) {
+    var ageMin = Math.round((Date.now() - cachedCalendarFetchedAt) / 60000);
+    console.log('Calendar: cache is fresh (' + ageMin + ' min old); skipping fetch');
+    return;
+  }
+  fetchAndLogCalendarEvents();
+}
+
 function sendCalendarEvents(events) {
   var msg = { 'CALENDAR_EVENT_COUNT': events.length };
 
@@ -456,6 +519,10 @@ function fetchAndLogCalendarEvents() {
   try { calendars = raw ? JSON.parse(raw) : []; } catch (e) { calendars = []; }
   if (calendars.length === 0) {
     console.log('Calendar: no calendars configured.');
+    // Clear any previously-shown events on the watch (e.g. user removed all
+    // calendars in the config page) and drop the cache.
+    saveCalendarEvents([]);
+    sendCalendarEvents([]);
     return;
   }
 
@@ -493,6 +560,7 @@ function fetchAndLogCalendarEvents() {
       if (pending === 0) {
         allEvents.sort(function(a, b) { return a.startMinute - b.startMinute; });
         console.log('Calendar: ' + allEvents.length + ' event(s) today: ' + JSON.stringify(allEvents));
+        saveCalendarEvents(allEvents);
         sendCalendarEvents(allEvents);
       }
     };
@@ -517,7 +585,7 @@ Pebble.addEventListener('appmessage', function (e) {
     // Fresh heartbeat from the watch — start a new backoff cycle.
     resetBackoff();
     getLocation();
-    fetchAndLogCalendarEvents();
+    maybeFetchCalendarEvents();
   }
 });
 
@@ -644,4 +712,8 @@ Pebble.addEventListener('webviewclosed', function (e) {
 
   // Now apply Pass 1 to widget strings and send them with current weather/solar data
   sendDataToWatch();
+
+  // Re-fetch calendar events so calendar config changes (added/removed calendars,
+  // colour changes) take effect immediately rather than on the next heartbeat.
+  fetchAndLogCalendarEvents();
 });
