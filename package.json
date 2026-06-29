@@ -88,7 +88,10 @@
       "WATCH_IS_24H",
       "SETTING_USE_PRIMARY_WIDGET_FONT",
       "CALENDAR_EVENT_COUNT",
-      "CALENDAR_EVENT_DATA"
+      "CALENDAR_EVENT_DATA",
+      "CALENDAR_DETAIL_INDEX",
+      "CALENDAR_DETAIL_TITLE",
+      "CALENDAR_DETAIL_LOCATION"
     ],
     "resources": {
       "media": [

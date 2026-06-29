@@ -17,3 +17,18 @@ extern CalendarEvent g_calendar_events[];
 extern int g_calendar_event_count;
 
 void calendar_load_from_storage(void);
+
+// --- Event detail strings (RAM only, not persisted; emery / touch screen only) ---
+#if defined(PBL_PLATFORM_EMERY)
+#define EVENT_TITLE_LEN 40
+#define EVENT_LOC_LEN   40
+
+typedef struct {
+  char title[EVENT_TITLE_LEN];
+  char location[EVENT_LOC_LEN];
+} CalendarEventDetail;
+
+extern CalendarEventDetail g_event_details[];
+
+void calendar_clear_details(void);
+#endif // PBL_PLATFORM_EMERY

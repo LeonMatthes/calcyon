@@ -397,11 +397,32 @@ function toMinutes(jsDate) {
   return ((utcMinutes - jsDate.getTimezoneOffset()) % 1440 + 1440) % 1440;
 }
 
+function truncate(str, maxLen) {
+  if (!str) return '';
+  str = str.trim();
+  return str.length > maxLen ? str.substring(0, maxLen) : str;
+}
+
 function icalItemToEntry(item, color) {
+  // For recurring events the ICAL.Event is on item.item; for non-recurring it is item itself.
+  var vevent = item.item || item;
+  var comp = vevent.component;
+
+  var summary  = truncate(vevent.summary  || '', 39);
+  var location = truncate(vevent.location || '', 39);
+
+  // Fall back to URL/webpage field when location is absent.
+  if (!location && comp) {
+    var url = comp.getFirstPropertyValue('url');
+    if (url) location = truncate(url, 39);
+  }
+
   return {
     startMinute: toMinutes(item.startDate.toJSDate()),
     endMinute:   toMinutes(item.endDate.toJSDate()),
-    color:       color
+    color:       color,
+    title:       summary,
+    location:    location
   };
 }
 
@@ -445,8 +466,37 @@ function sendCalendarEvents(events) {
   }
 
   Pebble.sendAppMessage(msg,
-    function () { console.log('Calendar: sent ' + events.length + ' event(s) to watch'); },
+    function () {
+      console.log('Calendar: sent ' + events.length + ' event(s) to watch');
+      sendCalendarDetails(events, 0);
+    },
     function (e) { console.log('Calendar: failed to send events: ' + JSON.stringify(e)); }
+  );
+}
+
+// Send one detail message per event, chained on ack so the 768-byte inbox is never
+// overwhelmed.  index is the position in the sorted events array (matches the arc order).
+function sendCalendarDetails(events, index) {
+  if (index >= events.length) {
+    console.log('Calendar: all details sent');
+    return;
+  }
+  var ev = events[index];
+  Pebble.sendAppMessage(
+    {
+      'CALENDAR_DETAIL_INDEX':    index,
+      'CALENDAR_DETAIL_TITLE':    ev.title    || '',
+      'CALENDAR_DETAIL_LOCATION': ev.location || ''
+    },
+    function () {
+      console.log('Calendar detail ' + index + ': "' + (ev.title || '') + '"');
+      sendCalendarDetails(events, index + 1);
+    },
+    function (e) {
+      console.log('Calendar: failed to send detail ' + index + ': ' + JSON.stringify(e));
+      // Retry once after a short delay before giving up on this event.
+      setTimeout(function () { sendCalendarDetails(events, index + 1); }, 500);
+    }
   );
 }
 

@@ -53,6 +53,27 @@ static char widgetTextUP[WIDGET_TEXT_LEN]; // upper primary
 static char widgetTextLP[WIDGET_TEXT_LEN]; // lower primary
 static char widgetTextLS[WIDGET_TEXT_LEN]; // lower secondary
 
+// --- Event detail / drill-down state (emery / touch screen only) ---
+#if defined(PBL_PLATFORM_EMERY)
+// s_selected_event == -1  → clock mode (normal face)
+// s_selected_event >= 0   → detail mode (shows event info in center panel)
+static int s_selected_event = -1;
+static char s_detail_title[EVENT_TITLE_LEN];
+static char s_detail_time[24]; // e.g. "9:00 - 10:30" or "9:00 AM - 10:30 AM"
+static char s_detail_location[EVENT_LOC_LEN];
+static AppTimer *s_detail_dismiss_timer = NULL;
+
+// Touch double-tap detection state.
+static int16_t  s_touchdown_x = 0, s_touchdown_y = 0;
+static uint32_t s_tap1_ms = 0;  // timestamp (ms) of first pending tap; 0 = none
+static int16_t  s_tap1_x = 0, s_tap1_y = 0;
+
+#define DETAIL_AUTO_DISMISS_MS (20 * 1000)
+#define SWIPE_THRESHOLD_PX     30
+#define DOUBLE_TAP_WINDOW_MS   400
+#define DOUBLE_TAP_RADIUS_SQ   (30 * 30)
+#endif // PBL_PLATFORM_EMERY
+
 static void update_widget_text(void) {
   if (globalSettings.widgetUpperSecondary[0] != '\0') {
     widget_get_text(globalSettings.widgetUpperSecondary, widgetTextUS,
@@ -80,7 +101,113 @@ static void update_widget_text(void) {
   }
 }
 
+#if defined(PBL_PLATFORM_EMERY)
+
+// Populate s_detail_* buffers from the event at idx.  Called whenever
+// s_selected_event changes so that draw_event_detail() can stay allocation-free.
+static void event_detail_refresh(int idx) {
+  if (idx < 0 || idx >= g_calendar_event_count) return;
+  CalendarEvent *ev = &g_calendar_events[idx];
+  CalendarEventDetail *det = &g_event_details[idx];
+
+  // Title (show placeholder when details haven't arrived yet)
+  if (det->title[0] != '\0') {
+    strncpy(s_detail_title, det->title, sizeof(s_detail_title) - 1);
+  } else {
+    strncpy(s_detail_title, "(loading...)", sizeof(s_detail_title) - 1);
+  }
+  s_detail_title[sizeof(s_detail_title) - 1] = '\0';
+
+  // Time range: "H:MM - H:MM" (24h) or "H:MM AM - H:MM PM" (12h)
+  int s_h = ev->start_min / 60, s_m = ev->start_min % 60;
+  int e_h = ev->end_min   / 60, e_m = ev->end_min   % 60;
+  if (clock_is_24h_style() && !FORCE_12H) {
+    snprintf(s_detail_time, sizeof(s_detail_time),
+             "%d:%02d - %d:%02d", s_h, s_m, e_h, e_m);
+  } else {
+    const char *s_ap = s_h < 12 ? "AM" : "PM";
+    const char *e_ap = e_h < 12 ? "AM" : "PM";
+    int sh12 = s_h % 12; if (sh12 == 0) sh12 = 12;
+    int eh12 = e_h % 12; if (eh12 == 0) eh12 = 12;
+    snprintf(s_detail_time, sizeof(s_detail_time),
+             "%d:%02d%s - %d:%02d%s", sh12, s_m, s_ap, eh12, e_m, e_ap);
+  }
+  s_detail_time[sizeof(s_detail_time) - 1] = '\0';
+
+  // Location (or URL fallback; may be empty — panel collapses gracefully)
+  strncpy(s_detail_location, det->location, sizeof(s_detail_location) - 1);
+  s_detail_location[sizeof(s_detail_location) - 1] = '\0';
+}
+
+// Draw the event detail center panel (replaces the clock when s_selected_event >= 0).
+// Reuses the same slot/PUSH_SLOT pattern as draw_center_text so layout is consistent.
+static void draw_event_detail(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+  CalendarEvent *ev = &g_calendar_events[s_selected_event];
+  GColor ev_color = (GColor){.argb = ev->color};
+
+  GFont primary_font   = fonts_get_system_font(FONT_WIDGET_PRIMARY);
+  GFont secondary_font = fonts_get_system_font(FONT_WIDGET_SECONDARY);
+
+  SlotDescriptor slots[3];
+  int num_slots = 0;
+
+#define PUSH_SLOT_D(txt, fnt, h, off, col)  \
+  do {                                      \
+    slots[num_slots].text   = (txt);        \
+    slots[num_slots].font   = (fnt);        \
+    slots[num_slots].height = (h);          \
+    slots[num_slots].offset = (off);        \
+    slots[num_slots].color  = (col);        \
+    num_slots++;                            \
+  } while (0)
+
+  // Title — tinted with the calendar color to tie it to the ring arc
+  PUSH_SLOT_D(s_detail_title,
+              primary_font, FONT_WIDGET_PRIMARY_HEIGHT, FONT_WIDGET_PRIMARY_OFFSET,
+              ev_color);
+  // Time range
+  PUSH_SLOT_D(s_detail_time,
+              primary_font, FONT_WIDGET_PRIMARY_HEIGHT, FONT_WIDGET_PRIMARY_OFFSET,
+              globalSettings.subtextPrimaryColor);
+  // Location / URL fallback — omit row entirely when empty
+  if (s_detail_location[0] != '\0') {
+    PUSH_SLOT_D(s_detail_location,
+                secondary_font, FONT_WIDGET_SECONDARY_HEIGHT, FONT_WIDGET_SECONDARY_OFFSET,
+                globalSettings.subtextSecondaryColor);
+  }
+
+#undef PUSH_SLOT_D
+
+  // Vertically center the slot block (same math as draw_center_text)
+  int total_height = 0;
+  for (int i = 0; i < num_slots; i++) {
+    total_height += slots[i].height;
+    if (i < num_slots - 1) total_height += LINE_PADDING;
+  }
+  int y = (bounds.size.h - total_height) / 2;
+
+  for (int i = 0; i < num_slots; i++) {
+    SlotDescriptor *s = &slots[i];
+    graphics_context_set_text_color(ctx, s->color);
+    graphics_draw_text(ctx, s->text, s->font,
+                       GRect(0, y - s->offset, bounds.size.w, s->height),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    y += s->height + LINE_PADDING;
+  }
+}
+
+#endif // PBL_PLATFORM_EMERY
+
 static void draw_center_text(Layer *layer, GContext *ctx) {
+#if defined(PBL_PLATFORM_EMERY)
+  // In detail mode, replace the clock with the selected event's info.
+  if (s_selected_event >= 0) {
+    draw_event_detail(layer, ctx);
+    return;
+  }
+#endif
+
   GRect bounds = layer_get_bounds(layer);
   bool useLargeFont = globalSettings.useLargeFonts;
 
@@ -370,6 +497,118 @@ static void on_request_failed(void) {
   schedule_next_update_request(UPDATE_REQUEST_RETRY_MS);
 }
 
+// ============================================================
+// Event detail drill-down — auto-dismiss and touch handling
+// (emery / touch screen only)
+// ============================================================
+#if defined(PBL_PLATFORM_EMERY)
+
+static void detail_dismiss(void) {
+  s_selected_event = -1;
+  layer_mark_dirty(infoLayer);
+}
+
+static void detail_auto_dismiss_callback(void *data) {
+  s_detail_dismiss_timer = NULL;
+  detail_dismiss();
+}
+
+static void schedule_auto_dismiss(void) {
+  if (s_detail_dismiss_timer) {
+    app_timer_reschedule(s_detail_dismiss_timer, DETAIL_AUTO_DISMISS_MS);
+  } else {
+    s_detail_dismiss_timer =
+        app_timer_register(DETAIL_AUTO_DISMISS_MS, detail_auto_dismiss_callback, NULL);
+  }
+}
+
+static void cancel_auto_dismiss(void) {
+  if (s_detail_dismiss_timer) {
+    app_timer_cancel(s_detail_dismiss_timer);
+    s_detail_dismiss_timer = NULL;
+  }
+}
+
+// Forward-declare the hit-test function defined in drawUtils_rect.c.
+int calendar_find_event_at_point(GPoint tap, GRect layer_bounds);
+
+static void touch_handler(const TouchEvent *event, void *context) {
+  APP_LOG(APP_LOG_LEVEL_INFO, "Touch event: %d@%d", event->x, event->y);
+
+  if (event->type == TouchEvent_Touchdown) {
+    s_touchdown_x = event->x;
+    s_touchdown_y = event->y;
+    return;
+  }
+
+  if (event->type != TouchEvent_Liftoff) return;
+
+  int dx = (int)event->x - (int)s_touchdown_x;
+  int dy = (int)event->y - (int)s_touchdown_y;
+
+  // --- Horizontal swipe (prev/next event while in detail mode) ---
+  if (abs(dx) > SWIPE_THRESHOLD_PX && abs(dx) > abs(dy) && s_selected_event >= 0) {
+    if (g_calendar_event_count > 0) {
+      if (dx > 0) {
+        // Swipe right → previous event (earlier in day)
+        s_selected_event = (s_selected_event - 1 + g_calendar_event_count)
+                           % g_calendar_event_count;
+      } else {
+        // Swipe left → next event (later in day)
+        s_selected_event = (s_selected_event + 1) % g_calendar_event_count;
+      }
+      event_detail_refresh(s_selected_event);
+      layer_mark_dirty(infoLayer);
+      schedule_auto_dismiss();
+    }
+    s_tap1_ms = 0; // swipe consumed — reset pending-tap state
+    return;
+  }
+
+  // --- Tap: accumulate toward double-tap ---
+  time_t now_sec;
+  uint16_t now_ms_frac;
+  time_ms(&now_sec, &now_ms_frac);
+  uint32_t now_ms = (uint32_t)(now_sec % 86400) * 1000 + (uint32_t)now_ms_frac;
+
+  int tdx = (int)event->x - (int)s_tap1_x;
+  int tdy = (int)event->y - (int)s_tap1_y;
+  bool near_prev  = (tdx * tdx + tdy * tdy) <= DOUBLE_TAP_RADIUS_SQ;
+  bool in_window  = (s_tap1_ms != 0) &&
+                    ((now_ms - s_tap1_ms) <= DOUBLE_TAP_WINDOW_MS);
+
+  if (in_window && near_prev) {
+    // Second tap confirmed → fire double-tap action.
+    s_tap1_ms = 0;
+
+    if (g_calendar_event_count == 0) return;
+
+    int found = calendar_find_event_at_point(
+        GPoint(event->x, event->y),
+        layer_get_bounds(ringLayer));
+
+    if (found < 0) return;
+
+    if (found == s_selected_event) {
+      // Double-tapping the same event dismisses the detail panel.
+      cancel_auto_dismiss();
+      detail_dismiss();
+    } else {
+      s_selected_event = found;
+      event_detail_refresh(found);
+      layer_mark_dirty(infoLayer);
+      schedule_auto_dismiss();
+    }
+  } else {
+    // First tap — record and wait for the second.
+    s_tap1_ms = now_ms;
+    s_tap1_x  = event->x;
+    s_tap1_y  = event->y;
+  }
+}
+
+#endif // PBL_PLATFORM_EMERY
+
 static void init() {
 #ifdef FORCE_BACKLIGHT
   light_enable(true);
@@ -404,6 +643,12 @@ static void init() {
   health_service_events_subscribe(health_handler, NULL);
 #endif
 
+#if defined(PBL_PLATFORM_EMERY)
+  // Subscribe early so the wake double-tap's touches are delivered to the app.
+  touch_service_subscribe(touch_handler, NULL);
+  APP_LOG(APP_LOG_LEVEL_INFO, "Touch service: %d", (int)touch_service_is_enabled());
+#endif
+
   // Schedule initial update request with short delay to give PKJS time to start
   schedule_next_update_request(UPDATE_REQUEST_INITIAL_DELAY_MS);
 }
@@ -412,6 +657,11 @@ static void deinit() {
   if (s_update_request_timer) {
     app_timer_cancel(s_update_request_timer);
   }
+#if defined(PBL_PLATFORM_EMERY)
+  cancel_auto_dismiss();
+  touch_service_unsubscribe();
+  APP_LOG(APP_LOG_LEVEL_INFO, "disabling touch service");
+#endif
 #if defined(PBL_HEALTH)
   health_service_events_unsubscribe();
 #endif

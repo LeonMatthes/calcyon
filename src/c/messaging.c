@@ -123,6 +123,14 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context) {
       dict_find(iterator, MESSAGE_KEY_CALENDAR_EVENT_COUNT);
   Tuple *calendarEventData_tuple =
       dict_find(iterator, MESSAGE_KEY_CALENDAR_EVENT_DATA);
+#if defined(PBL_PLATFORM_EMERY)
+  Tuple *calendarDetailIndex_tuple =
+      dict_find(iterator, MESSAGE_KEY_CALENDAR_DETAIL_INDEX);
+  Tuple *calendarDetailTitle_tuple =
+      dict_find(iterator, MESSAGE_KEY_CALENDAR_DETAIL_TITLE);
+  Tuple *calendarDetailLocation_tuple =
+      dict_find(iterator, MESSAGE_KEY_CALENDAR_DETAIL_LOCATION);
+#endif
 
   if (timeColor_tuple != NULL) {
     globalSettings.timeColor = GColorFromHEX(timeColor_tuple->value->int32);
@@ -348,6 +356,9 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context) {
     if (count == 0) {
       g_calendar_event_count = 0;
       persist_write_int(CALENDAR_COUNT_PERSIST_KEY, 0);
+#if defined(PBL_PLATFORM_EMERY)
+      calendar_clear_details();
+#endif
       APP_LOG(APP_LOG_LEVEL_INFO, "Calendar: cleared");
     } else if (count > 0 && count <= MAX_CALENDAR_EVENTS && calendarEventData_tuple != NULL) {
       int data_len = calendarEventData_tuple->length;
@@ -356,6 +367,10 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context) {
       if (data_len == expected_len) {
         memcpy(g_calendar_events, calendarEventData_tuple->value->data, data_len);
         g_calendar_event_count = count;
+        // New arc batch: wipe stale detail strings; details arrive in follow-up messages.
+#if defined(PBL_PLATFORM_EMERY)
+        calendar_clear_details();
+#endif
 
         persist_write_int(CALENDAR_COUNT_PERSIST_KEY, count);
         persist_write_data(CALENDAR_PERSIST_KEY, g_calendar_events, data_len);
@@ -372,6 +387,33 @@ void inbox_received_callback(DictionaryIterator *iterator, void *context) {
       }
     }
   }
+
+  // Detail strings for a single event (sent one-per-message, chained from the phone side).
+  // Only emery has the touch screen needed for the drill-down feature.
+#if defined(PBL_PLATFORM_EMERY)
+  if (calendarDetailIndex_tuple != NULL) {
+    int idx = (int)calendarDetailIndex_tuple->value->int32;
+    if (idx >= 0 && idx < g_calendar_event_count) {
+      if (calendarDetailTitle_tuple != NULL) {
+        strncpy(g_event_details[idx].title,
+                calendarDetailTitle_tuple->value->cstring,
+                EVENT_TITLE_LEN - 1);
+        g_event_details[idx].title[EVENT_TITLE_LEN - 1] = '\0';
+      }
+      if (calendarDetailLocation_tuple != NULL) {
+        strncpy(g_event_details[idx].location,
+                calendarDetailLocation_tuple->value->cstring,
+                EVENT_LOC_LEN - 1);
+        g_event_details[idx].location[EVENT_LOC_LEN - 1] = '\0';
+      }
+      APP_LOG(APP_LOG_LEVEL_INFO, "Calendar detail %d: title='%s' loc='%s'",
+              idx, g_event_details[idx].title, g_event_details[idx].location);
+    } else {
+      APP_LOG(APP_LOG_LEVEL_WARNING, "Calendar detail: index %d out of range (count=%d)",
+              idx, g_calendar_event_count);
+    }
+  }
+#endif // PBL_PLATFORM_EMERY
 
   Settings_saveToStorage();
 

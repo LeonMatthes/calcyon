@@ -271,4 +271,70 @@ void draw_ring_layer(Layer *layer, GContext *ctx) {
   graphics_fill_circle(ctx, sunPos, SUN_DIAMETER);
   graphics_draw_circle(ctx, sunPos, SUN_DIAMETER);
 }
+
+// Hit-test a tap point against the 24-hour ring and return the index of the calendar
+// event whose arc is closest to the tap (circular minute distance).  Returns -1 when
+// there are no events.  Uses the same geometry as the event arc drawing loop above, so
+// the hit-test is guaranteed to match what the user sees.
+int calendar_find_event_at_point(GPoint tap, GRect layer_bounds) {
+  if (g_calendar_event_count == 0) return -1;
+
+  int thickness = RING_THICKNESS;
+  int numPositions = 96;
+
+  // Recompute centerBounds exactly as in draw_ring_layer
+  GRect centerBounds = GRect(
+      layer_bounds.origin.x + thickness,
+      layer_bounds.origin.y + thickness,
+      layer_bounds.size.w - thickness * 2,
+      layer_bounds.size.h - thickness * 2);
+
+  // Step 1: find the pip position closest to the tap (squared distance, no sqrt needed)
+  int best_pip = 0;
+  int best_dist_sq = 100000; // larger than any possible squared distance on the screen
+  for (int i = 0; i < numPositions; i++) {
+    GPoint p = getPipPosition(i, numPositions, centerBounds);
+    int dx = p.x - tap.x;
+    int dy = p.y - tap.y;
+    int dist_sq = dx * dx + dy * dy;
+    if (dist_sq < best_dist_sq) {
+      best_dist_sq = dist_sq;
+      best_pip = i;
+    }
+  }
+
+  // Step 2: convert best pip → minute-of-day (inverse of the +15h ring shift)
+  // pip * (1440/96) = pip * 15 = shiftedMin; then un-shift.
+  int shifted_min = best_pip * 15;
+  int tapped_minute = (shifted_min - 15 * 60 + 24 * 60) % (24 * 60);
+
+  // Step 3: find the event with the smallest circular minute-distance to tapped_minute
+  int best_event = 0;
+  int best_event_dist = 100000;
+  for (int e = 0; e < g_calendar_event_count; e++) {
+    CalendarEvent *ev = &g_calendar_events[e];
+    int dist;
+    bool wraps = ev->end_min < ev->start_min; // event crosses midnight
+    bool inside = wraps
+        ? (tapped_minute >= ev->start_min || tapped_minute <= ev->end_min)
+        : (tapped_minute >= ev->start_min && tapped_minute <= ev->end_min);
+
+    if (inside) {
+      dist = 0;
+    } else {
+      int d_start = abs(tapped_minute - (int)ev->start_min);
+      int d_end   = abs(tapped_minute - (int)ev->end_min);
+      d_start = int_min(d_start, 1440 - d_start); // take the shorter arc around the clock
+      d_end   = int_min(d_end,   1440 - d_end);
+      dist = int_min(d_start, d_end);
+    }
+    if (dist < best_event_dist) {
+      best_event_dist = dist;
+      best_event = e;
+    }
+  }
+
+  return best_event;
+}
+
 #endif
