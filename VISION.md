@@ -81,3 +81,30 @@ reuse of the existing day-arc fill loop; the bulk of the work is the data pipeli
 **Phase 2 — Implement Design C (Split Ring)** once A is working and on the watch.
 C is the preferred visual direction long-term: it preserves solar context even on busy
 days. Comparing A and C side-by-side on the live watch will inform the final call.
+
+## Event detail — implementation status (2026-06-29)
+
+The data pipeline and rendering for the event detail panel are **complete**:
+- Phone extracts title, location, and URL fallback from each iCal event and sends them
+  to the watch one event per AppMessage (chained on ack so the 768-byte inbox is never
+  overwhelmed).
+- The watch stores detail strings in RAM (`g_event_details[]`, emery-only) and renders
+  them in the centre panel: title tinted in the event's calendar colour, time range, and
+  location (collapsing gracefully when absent).
+- `calendar_find_event_at_point()` (in `drawUtils_rect.c`) maps a tap position to the
+  nearest event arc using the same forward geometry as the draw loop — no fragile inverse
+  math needed.
+
+**Blocked on firmware**: Pebble firmware intentionally restricts touch input to watchapps;
+watchfaces do not receive `touch_service` callbacks even though
+`touch_service_is_enabled()` returns true (hardware present).
+See https://developer.repebble.com/guides/events-and-services/touch/
+
+The complete implementation — data pipeline, rendering, and touch-based interaction
+(double-tap to open, swipe to cycle events, 20 s auto-dismiss) — is on the
+`event-details` branch (not yet merged to master).
+**Merge `event-details` once Pebble ships watchface touch support.**
+
+In the interim, the accelerometer tap service (`accel_tap_service_subscribe`) is the
+supported alternative for tap-triggered interactions — it fires on physical screen taps
+across all platforms but provides no `(x,y)` coordinates.

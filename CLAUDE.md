@@ -6,9 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Calcyon is a Pebble watchface forked from [Halcyon](https://github.com/freakified/halcyon). It shows a 24-hour solar ring around the watch edge (sun moves along the perimeter), and extends it with calendar event overlays on that ring. The goal: your day as both a solar day and a personal schedule.
 
+## Pebble platform context
+
+Two distinct entities — easy to confuse:
+
+- **repebble.com** — the *official* new Pebble, operated by Core Devices LLC and run by Eric Migicovsky (the original Pebble founder). Relaunched in 2025 after a ~9-year gap. All SDK, firmware, and the Pebble app are now managed here. Open source under github.com/coredevices. SDK docs live at **developer.repebble.com** (note: "re**p**ebble", not "rebble").
+- **rebble.io** — a *community* project that kept Pebble alive during the stasis years (timeline sync, app store mirror, firmware patches). Separate from the official Pebble effort; still operates as a community service.
+
+The SDK documentation URL `developer.repebble.com` looks like "Rebble" but belongs to the official Pebble. Do not attribute SDK or firmware behaviour to "Rebble" when the source is `developer.repebble.com` — that is the official Pebble docs.
+
 ## Build
 
-Requires the [Pebble SDK](https://developer.rebble.io/developer.pebble.com/sdk/index.html) (`pebble` CLI).
+Requires the [Pebble SDK](https://developer.repebble.com/sdk/) (`pebble` CLI).
 
 On Fedora, use `./pebble.sh` instead of `pebble` directly — it patches missing `.so` symlinks (`libbz2.so.1.0`, `libsndio.so.7`) that the SDK expects but Fedora doesn't provide at those names.
 
@@ -77,6 +86,13 @@ React/TypeScript SPA built with Vite. Opened by the Pebble app via `Pebble.openU
 - Sent to the watch via new `AppMessage` keys defined in `package.json` → `messageKeys`
 - `draw_ring_layer()` in both `drawUtils_rect.c` and `drawUtils_round.c` renders event arcs at the corresponding positions, using the same time-shift and position math as the solar ring
 - **Note**: The Pebble emulator runs in CET, while real phones have the correct local timezone.
+
+**Event detail drill-down** (in-progress, blocked on firmware — all code on `event-details` branch, not yet merged):
+- The data pipeline is complete on that branch: phone sends `CALENDAR_DETAIL_INDEX/TITLE/LOCATION` per event (one AppMessage each, chained on ack); watch stores them in `g_event_details[]` (`calendarUtils.h`, emery-only, not persisted).
+- The rendering path is complete on that branch: `draw_event_detail()` in `main.c` paints title (in calendar colour) + time range + location into the centre panel; `calendar_find_event_at_point()` in `drawUtils_rect.c` maps a tap position to the nearest event arc.
+- The touch input is **blocked**: Pebble firmware intentionally does not deliver touch events to watchfaces — only to watchapps. See https://developer.repebble.com/guides/events-and-services/touch/ — "Touch input is currently not supported in watchfaces." `touch_service_is_enabled()` returns `1` (hardware present) but the callback is never called.
+- **Do not re-implement touch input** in the watchface until the firmware restriction is lifted. Use `accel_tap_service_subscribe` as the interim fallback if you need any tap-triggered behaviour before then.
+- **Merge `event-details`** into master once Pebble ships watchface touch support.
 
 **Adding a new `AppMessage` key**: declare it in `package.json` → `pebble.messageKeys`, then use `MESSAGE_KEY_<NAME>` in C and the string key name in JS.
 
