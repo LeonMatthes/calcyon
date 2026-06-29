@@ -76,6 +76,7 @@ React/TypeScript SPA built with Vite. Opened by the Pebble app via `Pebble.openU
 - Phone JS fetches calendar events and encodes them as minute-offsets (start/end in minutes since midnight)
 - Sent to the watch via new `AppMessage` keys defined in `package.json` → `messageKeys`
 - `draw_ring_layer()` in both `drawUtils_rect.c` and `drawUtils_round.c` renders event arcs at the corresponding positions, using the same time-shift and position math as the solar ring
+- **Note**: The Pebble emulator runs in CET, while real phones have the correct local timezone.
 
 **Adding a new `AppMessage` key**: declare it in `package.json` → `pebble.messageKeys`, then use `MESSAGE_KEY_<NAME>` in C and the string key name in JS.
 
